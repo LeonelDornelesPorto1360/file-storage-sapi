@@ -1,0 +1,38 @@
+Abastece AI:
+
+	Trabalho com as seguintes tecnologias e arquiteturas:
+		- Mulesoft 3.8 (On Prem)
+		- Especificação em RAML
+		- Criação e manutenção de APIs
+		- Testes Unitários usando JUNIT
+		- Mocks de teste com Mountebank
+		- Arquitetura de uma camada (Não recomendado)
+  		- Dataweave 1.0
+		- Tratamento de erros no mule 3 nnão ajudava muito na identificação da natureza dos erros, pois ainda era muito atrelado ao Java.
+		- Muitos componentes como: JSON TO OBJECT, XML TO JSON substituidos pelo Transform Message usando Dataweave 2.0.
+		- Integrações com sistema legado
+		- Não utilizava o Runtime Plane, somente o Control plane para publicação das apis no exchange e sem o gerenciamento do api manager
+		
+		- GITLAB e Metodologias ageis (Scrum e kanban)
+		- Esteira DEVOPS CI/CD
+		- Aprovação lider técnico (Hugo)
+		- Branchs (dev, qa e prod)
+		- Era aberto GMUD para subida em produção
+
+Vivo, Alpargatas e Vicunha:
+
+	Trabalho com as seguintes tecnologias e arquiteturas:
+		- Mulesoft (Cloudhub)
+		- Especificação em RAML (Design First) para depois a implementação
+		- Criação e manutenção de APIs
+		- Testes Unitários usando MUNIT
+		- Arquitetura de três camadas (eapi, papi e sapi) -> API LED
+  		- REST e SOAP
+		- API Manager para o gerenciamento das instâncias no cloudhub
+		- Anypoint MQ no cliente Alpargatas
+		- Ambos clientes, utilizavam o control plane e o runtime plane
+		- Shared Loadbalance (PAPI e SAPI trabalham dentro da rede interna VPC do mulesoft, somente a EAPI exposta)
+		
+		- GITLAB e Metodologias ageis (Scrum e kanban)
+		- Branchs (dev, qa e prod)
+		- Integação com Salesforce (Service Cloud, Sales Cloud e Marketing cloud na vivo, para lançar campanhas por SMS)

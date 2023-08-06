@@ -1,0 +1,14 @@
+api:
+  id: ""
+  name: ""
+  version: "v1"
+  port: "8081"
+  protocol: "http"
+  host: "localhost"
+  groupId: ""    # replaced through Maven resource filtering
+  artifactId: ""
+  
+filesystems:
+  local:
+    basepath: "files"
+  

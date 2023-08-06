@@ -1,0 +1,758 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:ftp="http://www.mulesoft.org/schema/mule/ftp" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd  http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd http://www.mulesoft.org/schema/mule/ftp http://www.mulesoft.org/schema/mule/ftp/current/mule-ftp.xsd">
+    <http:listener-config name="api-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+    <apikit:config name="api-config" api="resource::e801d73e-672d-46c1-bf8d-052bffe8c949:file-storage-service:1.0.10:raml:zip:api.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+    <flow name="api-main">
+        <http:listener config-ref="api-httpListenerConfig" path="/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:router config-ref="api-config" />
+		<error-handler ref="api-main-error-handler" />
+	</flow>
+    <flow name="api-console">
+        <http:listener config-ref="api-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="api-config" />
+        <error-handler ref="api-console-error-handler"></error-handler>
+    </flow>
+    <flow name="put:\files\(target)\(targetId)\collection:api-config">
+        <ee:transform doc:name="setAttributes" doc:id="9b43fdf3-c99c-4cd2-a430-fe1314060f7a">
+            <ee:message />
+            <ee:variables>
+                <ee:set-variable variableName="targetId"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.uriParams.targetId]]></ee:set-variable>
+                <ee:set-variable variableName="target"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.uriParams.target]]></ee:set-variable>
+                <ee:set-variable variableName="payload"><![CDATA[%dw 2.0
+output application/dw
+---
+payload]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <try doc:name="Try" doc:id="9337f009-f571-40f3-803b-d18d4e81eae8">
+            <ftp:delete doc:name="Delete" doc:id="74254570-b5a2-42d8-a7e6-9d9cf80fc115" path="#[p('filesystems.local.basepath') ++ &quot;/collection/&quot; ++ vars.target ++ &quot;/&quot; ++ vars.targetId]" config-ref="FTP_Config">
+                <reconnect count="1" />
+            </ftp:delete>
+            <error-handler>
+                <on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="69ba6752-d8b7-43e9-92c1-55bf3a4b7823">
+                    <logger level="INFO" doc:name="Logger" doc:id="e440473f-ba13-499d-90b0-3fb24eb2e12d" />
+                </on-error-continue>
+            </error-handler>
+        </try>
+        <ee:transform doc:name="Transform Message" doc:id="4a6d240b-30a0-4948-a44f-4226b38afec3">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/dw 
+--- 
+payload.parts.*files]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="payloadInput"><![CDATA[payload]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <foreach doc:name="For Each" doc:id="02c1ade1-bbbb-4740-96fc-131a39bd62b1" collection="#[payload]">
+            <choice doc:name="Choice" doc:id="ed8a86b3-70da-4f89-96a9-cc8cd7cdc70e">
+                <when expression="#[(payload.headers.&quot;Content-Type&quot; replace &quot;application/&quot; with &quot;&quot;) == &quot;vnd.openxmlformats-officedocument.spreadsheetml.sheet&quot;]">
+                    <ee:transform doc:name="Transform Message" doc:id="b4f4d4d3-25a7-4263-86dd-6a783f9a2027">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/dw
+---
+vars.payloadInput.parts.*files[vars.counter - 1].content]]></ee:set-payload>
+                        </ee:message>
+                        <ee:variables>
+                            <ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/json
+---
+payload[0]."Content-Disposition".filename]]></ee:set-variable>
+                        </ee:variables>
+                    </ee:transform>
+                    <ee:transform doc:name="Transform Message" doc:id="7be0df0d-d562-4861-928e-7853b1c8e0ac">
+                        <ee:message />
+                        <ee:variables>
+                            <ee:set-variable variableName="fileLocation"><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ "/collection/" ++ vars.target ++ "/" ++ vars.targetId ++ "/" ++ vars.fileName]]></ee:set-variable>
+                        </ee:variables>
+                    </ee:transform>
+                    <ee:transform doc:name="Transform Message" doc:id="671ad4e4-4131-43f4-bb2d-10f38a8b26aa">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/xlsx header=true
+---
+payload]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+                    <ftp:write doc:name="Write" doc:id="aacde1a5-97c7-451d-a787-9932d08a35c2" path="#[vars.fileLocation]" config-ref="FTP_Config">
+                        <reconnect count="1" />
+                    </ftp:write>
+                </when>
+                <otherwise>
+                    <ee:transform doc:name="Transform Message" doc:id="79b1efbb-1156-4311-bcc3-655383a14151">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/dw
+---
+vars.payloadInput.parts.*files[vars.counter - 1].content]]></ee:set-payload>
+                        </ee:message>
+                        <ee:variables>
+                            <ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/json
+---
+payload[0]."Content-Disposition".filename]]></ee:set-variable>
+                        </ee:variables>
+                    </ee:transform>
+                    <ee:transform doc:name="Transform Message" doc:id="bb2d8afb-08b2-4ae3-85bd-ec7827f5742e">
+                        <ee:message />
+                        <ee:variables>
+                            <ee:set-variable variableName="fileLocation"><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ "/collection/" ++ vars.target ++ "/" ++ vars.targetId ++ "/" ++ vars.fileName]]></ee:set-variable>
+                        </ee:variables>
+                    </ee:transform>
+                    <ee:transform doc:name="Transform Message" doc:id="11220391-7773-4d95-acd7-3dc9eae172bc">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/octet-stream
+---
+payload]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+                    <ftp:write doc:name="Write" doc:id="86da5298-ca04-4cf9-b3c3-9ea8c59ad1dd" path="#[vars.fileLocation]" config-ref="FTP_Config">
+                        <reconnect count="1" />
+                    </ftp:write>
+                </otherwise>
+            </choice>
+        </foreach>
+        <ee:transform doc:name="Transform Message" doc:id="962c6546-ec89-4659-90c0-1c5ab07a7bc8">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+}]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="httpStatus"><![CDATA[204]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="put:\files\(target)\(targetId)\content:api-config">
+        <ee:transform doc:name="setAttributes" doc:id="fd9604d7-56b1-4597-b5b5-d92582f38312">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/dw
+---
+payload]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="targetId"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.targetId]]></ee:set-variable>
+                <ee:set-variable variableName="target"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.target]]></ee:set-variable>
+				<ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+		<choice doc:name="Choice" doc:id="15c0516a-5214-44ab-a006-f98857dfbb72" >
+			<when expression="#[sizeOf(payload.parts.*file) == 1]">
+				<try doc:name="Try" doc:id="5023c17c-b6bd-4c8e-9292-e011b5926a42">
+                    <ftp:delete doc:name="Delete" doc:id="fc14793a-dd7e-4828-b4d8-ba75c1fec597" path="#[p('filesystems.local.basepath') ++ &quot;/content/&quot; ++ vars.target ++ &quot;/&quot; ++ vars.targetId]" config-ref="FTP_Config">
+                        <reconnect count="1" />
+                    </ftp:delete>
+                    <error-handler>
+                        <on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7180d5b1-792d-420e-b1af-e89b90bb2d98">
+                            <logger level="INFO" doc:name="Logger" doc:id="db546591-28b5-48a5-9b77-d05159ad45e9" />
+                        </on-error-continue>
+                    </error-handler>
+                </try>
+				<ee:transform doc:name="Transform Message" doc:id="056f3542-1468-4e9f-a94e-a1505ebbddea">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/dw
+---
+payload.parts.*file[0].content]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<ee:transform doc:name="Transform Message" doc:id="4fcb2fcd-c104-46c9-aed7-25d241fcf727">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/octet-stream
+---
+payload]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+				<ee:transform doc:name="Transform Message" doc:id="14f9278d-5d3b-4519-873a-6a9c9710b1e4">
+            <ee:message />
+            <ee:variables>
+                <ee:set-variable variableName="targetFtp"><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ "/content/" ++ vars.target ++"/"++ vars.targetId ++ "/" ++ vars.fileName.parts.file.headers."Content-Disposition".filename]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+				<ftp:write doc:name="Write" doc:id="72aaa21f-4d0b-4981-a513-adf47d33c3ad" path="#[vars.targetFtp]" config-ref="FTP_Config">
+                    <reconnect count="1" />
+                </ftp:write>
+				<ee:transform doc:name="Transform Message" doc:id="7f48bbee-2532-440e-b426-0a3d4585d77f">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[204]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="c53f4623-bd5a-4355-83fe-c5d0cdce57e2" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{"message": "Somente pode enviar um arquivo!!"}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="delete:\files\(target)\(targetId)\collection:api-config">
+        <ee:transform doc:name="Transform Message" doc:id="e3b0f4e7-e352-4f19-8775-65db0849c1b8">
+            <ee:variables>
+                <ee:set-variable variableName="target"><![CDATA[attributes.uriParams.'target']]></ee:set-variable>
+                <ee:set-variable variableName="targetId"><![CDATA[attributes.uriParams.'targetId']]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <ftp:delete doc:name="Delete" doc:id="2017b1fb-cb64-46fa-9000-35e82a288cad" path="#[p('filesystems.local.basepath') ++ &quot;/collection/&quot; ++ vars.target ++&quot;/&quot;++ vars.targetId]" config-ref="FTP_Config">
+                <reconnect count="1" />
+            </ftp:delete>
+        <logger level="INFO" doc:name="Logger" doc:id="060b3dd9-d33d-4e12-b7e5-d34351260bae" message="delete:\files\(target)\(targetId)\content:api-config" />
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="delete:\files\(target)\(targetId)\content:api-config">
+        <ee:transform>
+            <ee:variables>
+                <ee:set-variable variableName="target">attributes.uriParams.'target'</ee:set-variable>
+                <ee:set-variable variableName="targetId">attributes.uriParams.'targetId'</ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="09fe29c8-058f-4e13-8d27-86266805c625">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ "/content/" ++ vars.target ++"/"++ vars.targetId]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ftp:delete doc:name="Delete" doc:id="a80bb24d-019f-4384-a7be-a54c85f9b8c3" path="#[payload]" config-ref="FTP_Config">
+            <reconnect count="1" />
+        </ftp:delete>
+		<ee:transform doc:name="Transform Message" doc:id="30cd55cc-4e52-4a80-ac5f-ae69f28375bd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[204]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="delete:\files\(target)\(targetId)\collection\(fileName):api-config">
+        <ee:transform>
+            <ee:variables>
+                <ee:set-variable variableName="target"><![CDATA[attributes.uriParams.'target']]></ee:set-variable>
+                <ee:set-variable variableName="targetId"><![CDATA[attributes.uriParams.'targetId']]></ee:set-variable>
+                <ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.uriParams.'fileName']]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <ftp:list doc:name="List" doc:id="768c7a11-65cf-42c1-a52f-2a8025a822aa" directoryPath="#[p('filesystems.local.basepath') ++ &quot;/collection/&quot; ++ vars.target ++&quot;/&quot;++ vars.targetId]" config-ref="FTP_Config">
+                <reconnect count="1" />
+            </ftp:list>
+        <ee:transform doc:name="Transform Message" doc:id="66fabe06-795a-43f4-9651-18528f58b73a">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <ee:transform doc:name="Transform Message" doc:id="44dc031d-1bac-41bc-b902-4b9c1be42cbc">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "target": vars.target,
+    "targetId": vars.targetId,
+    "items": payload map ((item, index) -> {
+        "href": item.attributes.path replace "\\" with "/",
+        "name": item.attributes.name,
+        "size": item.attributes.size
+    })
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <set-variable value="#[payload.items[(payload.items.name find vars.fileName)[0]].href default &quot;&quot;]" doc:name="href" doc:id="6bd8d02d-c937-4599-97dc-9dae8900a9e5" variableName="href" />
+        <ftp:delete doc:name="Delete" doc:id="9488fe85-ebc2-457e-8b9b-d209f43feb0c" path="#[vars.href]" config-ref="FTP_Config">
+                    <reconnect count="1" />
+                </ftp:delete>
+		<ee:transform doc:name="Transform Message" doc:id="18e2e94b-ffc0-4a04-a009-3c869ff1763e">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+                    </ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[204]]></ee:set-variable>
+					</ee:variables>
+                </ee:transform>
+        <logger level="INFO" message="delete:\files\(target)\(targetId)\collection\(fileName):api-config" />
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="get:\files\(target)\(targetId)\collection:api-config">
+        <ee:transform>
+            <ee:variables>
+                <ee:set-variable variableName="target"><![CDATA[attributes.uriParams.'target']]></ee:set-variable>
+                <ee:set-variable variableName="targetId"><![CDATA[attributes.uriParams.'targetId']]></ee:set-variable>
+				<ee:set-variable variableName="href" ><![CDATA[attributes.rawRequestPath]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <ftp:list doc:name="List" doc:id="5a0dd195-78cd-458c-a6c9-9ceb01beb7f4" directoryPath="#[p('filesystems.local.basepath') ++ &quot;/collection/&quot; ++ vars.target ++&quot;/&quot;++ vars.targetId]" config-ref="FTP_Config">
+                <reconnect count="1" />
+            </ftp:list>
+        <ee:transform doc:name="Transform Message" doc:id="ea8256cd-2c2f-459b-a246-8a2beb01b910">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <ee:transform doc:name="Transform Message" doc:id="c53d04d3-9cfc-4242-942b-f16b75a4e751">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "target": vars.target,
+    "targetId": vars.targetId,
+    "items": payload map ((item, index) -> {
+        "href": p('api.protocol') ++ "://" ++ p('api.host') ++ ":" ++ p('api.port') ++ vars.href ++ "/" ++ item.attributes.name,
+        "name": item.attributes.name,
+        "size": item.attributes.size
+    })
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <logger level="INFO" message="get:\files\(target)\(targetId)\collection:api-config" />
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="get:\files\(target)\(targetId)\content:api-config">
+        <ee:transform>
+            <ee:variables>
+                <ee:set-variable variableName="target"><![CDATA[attributes.uriParams.'target']]></ee:set-variable>
+                <ee:set-variable variableName="targetId"><![CDATA[attributes.uriParams.'targetId']]></ee:set-variable>
+				<ee:set-variable variableName="href" ><![CDATA[attributes.rawRequestPath]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <ftp:list doc:name="List" doc:id="96a1b004-4e39-4af8-b9c3-f4ddfa03d858" directoryPath="#[p('filesystems.local.basepath') ++ &quot;/content/&quot; ++ vars.target ++&quot;/&quot;++ vars.targetId]" config-ref="FTP_Config">
+                <reconnect frequency="10000" />
+            </ftp:list>
+        <ee:transform doc:name="Transform Message" doc:id="40302bec-7fb3-4d49-bf59-e0287ac4a041">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <ee:transform doc:name="Transform Message" doc:id="4622bc6e-958e-4dd6-a317-0887303f7a0d">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "target": vars.target,
+    "targetId": vars.targetId,
+    "item": payload map ((item, index) -> {
+        "href": p('api.protocol') ++ "://" ++ p('api.host') ++ ":" ++ p('api.port') ++ vars.href ++ "/" ++ "download",
+        "name": item.attributes.name,
+        "size": item.attributes.size
+    })
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <ee:transform doc:name="Transform Message" doc:id="8d8d2721-336b-4b5b-bfd6-6725c730b9aa">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "target": payload.target,
+  "targetId": payload.targetId,
+  "item": payload.item[0]
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="get:\files\(target)\(targetId)\collection\(fileName):api-config">
+        <ee:transform>
+            <ee:variables>
+                <ee:set-variable variableName="target">attributes.uriParams.'target'</ee:set-variable>
+                <ee:set-variable variableName="targetId">attributes.uriParams.'targetId'</ee:set-variable>
+                <ee:set-variable variableName="fileName">attributes.uriParams.'fileName'</ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <ee:transform doc:name="Transform Message" doc:id="8a9c6e28-a883-429c-9f41-6b3783db1488">
+            <ee:message>
+                <ee:set-payload><![CDATA['files/collection/' ++ vars.target ++ '/' ++ vars.targetId ++ '/' ++ vars.fileName]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <ftp:read doc:name="Read" doc:id="4802c792-33a6-4b24-a371-60153cfcc357" config-ref="FTP_Config" path="#[payload]" />
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="get:\files\(target)\(targetId)\content\download:api-config" doc:id="3c3af3b4-d42a-4176-8e79-8b682c8587fe">
+        <ee:transform doc:name="Transform Message" doc:id="a0a8a640-ae43-4967-b952-0899ee1833c0">
+            <ee:variables>
+                <ee:set-variable variableName="target"><![CDATA[attributes.uriParams.'target']]></ee:set-variable>
+                <ee:set-variable variableName="targetId"><![CDATA[attributes.uriParams.'targetId']]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+<ftp:list doc:name="List" doc:id="27cc0bac-2618-4b14-9204-3ea22362372d" config-ref="FTP_Config" directoryPath="#[p('filesystems.local.basepath') ++ &quot;/content/&quot; ++ vars.target ++&quot;/&quot;++ vars.targetId]"/>
+		<ee:transform doc:name="Transform Message" doc:id="238ef96c-bc54-435a-ae16-79560eefb5ad" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="6333079b-cc20-4386-bac3-2bdaea6a37de" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[output text/plain
+---
+p('filesystems.local.basepath') ++ "/content/" ++ vars.target ++"/"++ vars.targetId ++ "/" ++ payload.attributes.name[0]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="fileName" ><![CDATA[payload.attributes.name[0]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ftp:read doc:name="Read" doc:id="c541322a-a35c-49c2-aa8c-ca015acfda39" config-ref="FTP_Config" path="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="984f311d-f3be-42a9-bdba-91abd96886b1" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="outboundHeaders " ><![CDATA[{
+ 	"Content-Type": "attachment",
+	"Content-Disposition": "attachment;filename=" ++ vars.fileName
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="post:\files\(bucket)\create:api-config">
+		<choice doc:name="Choice" doc:id="3d6d6117-eeb5-4f2d-b907-4e88e5015069" >
+			<when expression="#[attributes.uriParams.bucket == 'ftp']">
+				<ee:transform doc:name="setAttributes" doc:id="5da430d0-9643-42e4-be55-bf54790ff365">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="payload"><![CDATA[%dw 2.0
+output application/dw
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ '/' ++ payload.parts.path.content]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<try doc:name="Try" doc:id="517cd8b0-2507-4d93-88cf-0facca639538">
+			<ftp:delete doc:name="Delete" doc:id="2a9dd714-c27c-43ab-85b0-8d6414cdce05" config-ref="FTP_Config" path="#[vars.path]">
+				<reconnect count="1" />
+			</ftp:delete>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="9fba6d22-3aa8-4c3f-ac58-89bbaac9cec9">
+					<logger level="INFO" doc:name="Logger" doc:id="f72aa8a6-b623-4229-813d-b2139162a6fa" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+				<ee:transform doc:name="Transform Message1" doc:id="7206a1f9-689b-43c5-9981-d8afed2c657e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/dw 
+--- 
+payload.parts.*files]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="payloadInput"><![CDATA[payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<foreach doc:name="For Each" doc:id="eff95643-1934-462a-97ca-aa1b10be19a8" collection="#[payload]">
+			<choice doc:name="Choice" doc:id="40453567-2c3c-4854-8aa5-9c97afc6522c">
+				<when expression='#[(payload.headers."Content-Type" replace "application/" with "") == "vnd.openxmlformats-officedocument.spreadsheetml.sheet"]'>
+					<ee:transform doc:name="Transform Message" doc:id="a4d5d56d-a926-4f94-bf56-2e104a1c2119">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/dw
+---
+vars.payloadInput.parts.*files[vars.counter - 1].content]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/json
+---
+payload[0]."Content-Disposition".filename]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message1" doc:id="e02cf321-6a93-4ed0-b8e3-220246453b27">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="fileLocation"><![CDATA[%dw 2.0
+output text/plain
+---
+vars.path ++ '/' ++ vars.fileName]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message2" doc:id="d7e1ccda-4941-4419-9e58-569a8517bee3">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/xlsx header=true
+---
+payload]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<ftp:write doc:name="Write" doc:id="ee7131c6-dd13-4b2d-baf6-b1ba83b931c1" config-ref="FTP_Config" path="#[vars.fileLocation]">
+						<reconnect count="1" />
+					</ftp:write>
+				</when>
+				<otherwise>
+					<ee:transform doc:name="Transform Message" doc:id="7323890d-c91e-4205-89a0-f3cfbbf1df54">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/dw
+---
+vars.payloadInput.parts.*files[vars.counter - 1].content]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/json
+---
+payload[0]."Content-Disposition".filename]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message1" doc:id="3c435fe7-2ca2-4402-bc56-839a48330b6c">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="fileLocation"><![CDATA[%dw 2.0
+output text/plain
+---
+vars.path ++ '/' ++ vars.fileName]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message2" doc:id="188fb931-06e3-4d25-9f1d-0ac0240878f9">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/octet-stream
+---
+payload]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<ftp:write doc:name="Write" doc:id="91de6651-16e6-4354-8c98-f60030e6a707" config-ref="FTP_Config" path="#[vars.fileLocation]">
+						<reconnect count="1" />
+					</ftp:write>
+				</otherwise>
+			</choice>
+		</foreach>
+				<ee:transform doc:name="Transform Message" doc:id="be54ec3e-b5a8-41ce-a6c1-9440f79381cd">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[204]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="c191b68a-b98f-446d-a929-d62316eff47e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	message: "O parametro de entrada está incorreto, precisa inserir o parametro corretamente."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="post:\files\(bucket)\delete:api-config">
+        <ee:transform doc:name="setAttributes" doc:id="f0c3b950-0566-4b5a-918a-49dccac2a7be">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="payload"><![CDATA[%dw 2.0
+output application/dw
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ '/' ++ payload.parts.path.content]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ftp:delete doc:name="Delete" doc:id="663c3920-8db1-4a70-b721-1e2c742262b7" config-ref="FTP_Config" path="#[vars.path]">
+				<reconnect count="1" />
+			</ftp:delete>
+		<ee:transform doc:name="Transform Message" doc:id="6018e899-5361-412f-bad0-9a2688d68a56" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[204]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="post:\files\(bucket)\download:api-config">
+		<ee:transform doc:name="setAttributes" doc:id="d495e63f-74be-4b41-8f18-beabf2870be7" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="payload" ><![CDATA[%dw 2.0
+output application/dw
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ '/' ++ payload.parts.path.content]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="e3d045ff-5ae0-4dbc-9d5d-416ce4606f0f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/json
+---
+substring(vars.path, 0, (vars.path find  '/')[sizeOf(vars.path find '/') - 1])]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ftp:list doc:name="List" doc:id="f42cc35e-45e8-42db-93f2-d3633addb97d" config-ref="FTP_Config" directoryPath="#[payload]" />
+		<ee:transform doc:name="Transform Message" doc:id="b981cf7e-fac3-4b1c-8da5-9024041967a4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="fileName" ><![CDATA[payload.attributes.name[0]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ftp:read doc:name="Read" doc:id="94d3a3d5-5f69-486b-8380-8667e0d975c3" config-ref="FTP_Config" path="#[vars.path]"/>
+		<ee:transform doc:name="Transform Message2" doc:id="f2ace4c3-1ddb-4cfd-8c5f-d3389cbe7d8b" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="outboundHeaders " ><![CDATA[{
+ 	"Content-Type": "attachment",
+	"Content-Disposition": "attachment;filename=" ++ vars.fileName
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+    <flow name="post:\files\(bucket)\list:api-config">
+		<ee:transform doc:name="setAttributes" doc:id="67e3c3f2-7f67-4a8a-883d-961af0615d64" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="payload" ><![CDATA[%dw 2.0
+output application/dw
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output text/plain
+---
+p('filesystems.local.basepath') ++ '/' ++ payload.parts.path.content]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ftp:list doc:name="List" doc:id="3f36eb95-5f2c-49b5-9bb3-b44a11b5786c" config-ref="FTP_Config" directoryPath="#[vars.path]" />
+		<ee:transform doc:name="Transform Message" doc:id="01a715dd-8ab9-4d8a-8a85-fb2d222a1245" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message1" doc:id="f6dba967-d120-4e15-9b66-984eb361cef2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "item": payload map ((item, index) -> {
+        "href": p('api.protocol') ++ "://" ++ p('api.host') ++ ":" ++ p('api.port') ++ '/' ++ vars.path ++ '/' ++ item.attributes.name,
+        "name": item.attributes.name,
+        "size": item.attributes.size
+    })
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<error-handler ref="api-main-flow-error-handler" />
+    </flow>
+</mule>
